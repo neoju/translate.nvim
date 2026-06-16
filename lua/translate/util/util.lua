@@ -186,4 +186,121 @@ function M.write_temp_data(text)
   return path
 end
 
+---Wrap lines to a maximum width using a word-break: normal strategy.
+---@param lines string[]
+---@param max_width integer
+---@return string[]
+function M.wrap_lines(lines, max_width)
+  local new_lines = {}
+  for _, text in ipairs(lines) do
+    local tokens = {}
+    local current_token = ""
+    local current_type = nil
+
+    for _, char in utf8.codes(text) do
+      local char_width = api.nvim_strwidth(char)
+      local char_type
+      if char == " " then
+        char_type = "space"
+      elseif char_width >= 2 then
+        char_type = "cjk"
+      else
+        char_type = "word"
+      end
+
+      if char_type == "cjk" then
+        if current_token ~= "" then
+          table.insert(tokens, { text = current_token, type = current_type, width = api.nvim_strwidth(current_token) })
+          current_token = ""
+        end
+        table.insert(tokens, { text = char, type = "cjk", width = char_width })
+        current_type = nil
+      else
+        if current_type == nil then
+          current_token = char
+          current_type = char_type
+        elseif current_type == char_type then
+          current_token = current_token .. char
+        else
+          table.insert(tokens, { text = current_token, type = current_type, width = api.nvim_strwidth(current_token) })
+          current_token = char
+          current_type = char_type
+        end
+      end
+    end
+    if current_token ~= "" then
+      table.insert(tokens, { text = current_token, type = current_type, width = api.nvim_strwidth(current_token) })
+    end
+
+    local current_line = {}
+    local current_line_width = 0
+    local wrapped_this_line = false
+
+    for _, token in ipairs(tokens) do
+      if token.type == "space" then
+        if current_line_width == 0 and wrapped_this_line then
+          -- Skip leading space on wrapped lines
+        elseif current_line_width + token.width <= max_width then
+          table.insert(current_line, token.text)
+          current_line_width = current_line_width + token.width
+        else
+          local line_str = table.concat(current_line, ""):gsub("%s+$", "")
+          table.insert(new_lines, line_str)
+          current_line = {}
+          current_line_width = 0
+          wrapped_this_line = true
+        end
+      else
+        if current_line_width + token.width <= max_width then
+          table.insert(current_line, token.text)
+          current_line_width = current_line_width + token.width
+        else
+          if current_line_width > 0 then
+            local line_str = table.concat(current_line, ""):gsub("%s+$", "")
+            table.insert(new_lines, line_str)
+            current_line = {}
+            current_line_width = 0
+            wrapped_this_line = true
+          end
+
+          if token.width <= max_width then
+            table.insert(current_line, token.text)
+            current_line_width = token.width
+          else
+            if token.type == "word" then
+              for _, char in utf8.codes(token.text) do
+                local char_width = api.nvim_strwidth(char)
+                if current_line_width + char_width > max_width then
+                  local line_str = table.concat(current_line, ""):gsub("%s+$", "")
+                  table.insert(new_lines, line_str)
+                  current_line = { char }
+                  current_line_width = char_width
+                  wrapped_this_line = true
+                else
+                  table.insert(current_line, char)
+                  current_line_width = current_line_width + char_width
+                end
+              end
+            else
+              table.insert(current_line, token.text)
+              current_line_width = token.width
+            end
+          end
+        end
+      end
+    end
+
+    if #current_line > 0 then
+      local line_str = table.concat(current_line, ""):gsub("%s+$", "")
+      table.insert(new_lines, line_str)
+    end
+  end
+
+  if #new_lines == 0 then
+    new_lines = { "" }
+  end
+
+  return new_lines
+end
+
 return M

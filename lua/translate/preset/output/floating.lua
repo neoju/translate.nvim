@@ -15,11 +15,15 @@ function M.cmd(lines, _)
 
   local options = require("translate.config").get("preset").output.floating
 
+  if options.max_width and options.max_width > 0 then
+    lines = util.wrap_lines(lines, options.max_width)
+  end
+
   local buf = api.nvim_create_buf(false, true)
   api.nvim_buf_set_lines(buf, 0, -1, true, lines)
   api.nvim_set_option_value("filetype", options.filetype, { buf = buf })
 
-  local width = util.max_width_in_string_list(lines)
+  local width = options.max_width or util.max_width_in_string_list(lines)
   local height = #lines
 
   local win = api.nvim_open_win(buf, false, {
